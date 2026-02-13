@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Image from "next/image";
 import { PaperData, Question, Section, PageSettings } from "@/types";
 import QuestionForm from "./QuestionForm";
@@ -16,15 +16,15 @@ const formatDateDDMMYYYY = (dateStr: string) => {
 
 const initialPaperData: PaperData = {
   header: {
-    institutionName: "",
-    college: "",
-    department: "",
-    examName: "",
+    institutionName: "SRM Institute of Science and Technology",
+    college: "Faculty of Science and Humanities, KTR",
+    department: "Department of Computer Applications",
+    examName: "Model Examination",
     subject: "",
     courseCode: "",
     class: "",
     semester: "",
-    date: new Date().toISOString().split('T')[0],
+    date: "",
     duration: "",
     totalMarks: 100,
     logo: "/srm.png",
@@ -59,10 +59,15 @@ export default function Editor() {
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [showBlCoPo, setShowBlCoPo] = useState(true);
   const [showWatermark, setShowWatermark] = useState(false);
-  const [showLogo, setShowLogo] = useState(true);
+  const [showLogo, setShowLogo] = useState(false);
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.04);
   const [autoCapitalize, setAutoCapitalize] = useState(true);
   const [allCaps, setAllCaps] = useState(false);
+
+  const [logoSize, setLogoSize] = useState(60);
+  const [watermarkSize, setWatermarkSize] = useState(200);
+  const [isSavingPdf, setIsSavingPdf] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
   const calculatedTotalMarks = paperData.sections.reduce(
     (acc, section) => acc + section.questions.reduce((qAcc, q) => qAcc + q.marks, 0),
     0
@@ -219,8 +224,105 @@ export default function Editor() {
     }));
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handlePrint = async () => {
+    if (!previewRef.current || isSavingPdf) return;
+    setIsSavingPdf(true);
+    try {
+      // Dynamic imports to avoid SSR issues
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default;
+      const { jsPDF } = await import('jspdf');
+
+      // Temporarily reset the scale on the inner wrapper so html2canvas captures at full size
+      const scaledWrapper = previewRef.current.querySelector('.print-reset-transform') as HTMLElement | null;
+      const prevTransform = scaledWrapper?.style.transform || '';
+      if (scaledWrapper) scaledWrapper.style.transform = 'none';
+
+      // Fix for html2canvas: override Tailwind's lab() colors on captured elements
+      const allEls = previewRef.current.querySelectorAll('*');
+      allEls.forEach((el) => {
+        const htmlEl = el as HTMLElement;
+        const computed = getComputedStyle(htmlEl);
+        if (computed.color.includes('lab(') || computed.color.includes('oklch(')) {
+          htmlEl.style.color = '#000';
+        }
+        if (computed.backgroundColor.includes('lab(') || computed.backgroundColor.includes('oklch(')) {
+          htmlEl.style.backgroundColor = 'transparent';
+        }
+        if (computed.borderColor.includes('lab(') || computed.borderColor.includes('oklch(')) {
+          htmlEl.style.borderColor = '#000';
+        }
+      });
+
+      // Wait a frame for the layout to settle
+      await new Promise(r => setTimeout(r, 100));
+
+      const pageElements = previewRef.current.querySelectorAll('[data-page-index]');
+      if (pageElements.length === 0) {
+        if (scaledWrapper) scaledWrapper.style.transform = prevTransform;
+        return;
+      }
+
+      // Landscape A4: 297mm x 210mm
+      const pdfWidth = 297;
+      const pdfHeight = 210;
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const halfWidth = pdfWidth / 2;
+      const padding = 3;
+
+      const canvases: HTMLCanvasElement[] = [];
+      for (let i = 0; i < pageElements.length; i++) {
+        const el = pageElements[i] as HTMLElement;
+        const canvas = await html2canvas(el, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+        });
+        canvases.push(canvas);
+      }
+
+      // Restore scale
+      if (scaledWrapper) scaledWrapper.style.transform = prevTransform;
+
+      // Place 2 pages per sheet, side by side
+      for (let i = 0; i < canvases.length; i += 2) {
+        if (i > 0) pdf.addPage();
+
+        // Left page
+        const leftCanvas = canvases[i];
+        const leftAspect = leftCanvas.height / leftCanvas.width;
+        const leftSlotW = halfWidth - padding * 2;
+        const leftSlotH = pdfHeight - padding * 2;
+        let leftW = leftSlotW;
+        let leftH = leftW * leftAspect;
+        if (leftH > leftSlotH) { leftH = leftSlotH; leftW = leftH / leftAspect; }
+        const leftX = padding + (leftSlotW - leftW) / 2;
+        const leftY = padding + (leftSlotH - leftH) / 2;
+        pdf.addImage(leftCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', leftX, leftY, leftW, leftH);
+
+        // Right page (if exists)
+        if (i + 1 < canvases.length) {
+          const rightCanvas = canvases[i + 1];
+          const rightAspect = rightCanvas.height / rightCanvas.width;
+          const rightSlotW = halfWidth - padding * 2;
+          const rightSlotH = pdfHeight - padding * 2;
+          let rightW = rightSlotW;
+          let rightH = rightW * rightAspect;
+          if (rightH > rightSlotH) { rightH = rightSlotH; rightW = rightH / rightAspect; }
+          const rightX = halfWidth + padding + (rightSlotW - rightW) / 2;
+          const rightY = padding + (rightSlotH - rightH) / 2;
+          pdf.addImage(rightCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', rightX, rightY, rightW, rightH);
+        }
+      }
+
+      pdf.save(`${paperData.header.subject || 'question-paper'}.pdf`);
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      alert('Failed to generate PDF. Please try again.');
+    } finally {
+      setIsSavingPdf(false);
+    }
   };
 
   return (
@@ -248,12 +350,13 @@ export default function Editor() {
             </button>
             <button 
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-white transition-colors"
+              disabled={isSavingPdf}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-white transition-colors disabled:opacity-60"
               style={{ background: '#2a7d5f' }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = '#2a7d5f')}
+              onMouseEnter={(e) => { if (!isSavingPdf) e.currentTarget.style.background = '#236b50'; }}
               onMouseLeave={(e) => (e.currentTarget.style.background = '#2a7d5f')}
             >
-              <Printer size={15} /> Save as PDF
+              <Printer size={15} /> {isSavingPdf ? 'Generating...' : 'Save as PDF'}
             </button>
           </div>
         </header>
@@ -387,7 +490,7 @@ export default function Editor() {
                 </div>
                 <div className="col-span-2 flex gap-4">
                     <div className="flex-1">
-                        <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>Date</label>
+                        <label className="block text-xs font-medium mb-1" style={{ color: '#374151' }}>Date <span className="font-normal" style={{ color: '#9ca3af' }}>(optional)</span></label>
                         <input type="date" value={paperData.header.date} onChange={(e) => handleHeaderChange('date', e.target.value)} className="w-full p-2 text-sm rounded-md" style={{ border: '1px solid #d1d5db', color: '#1a1a2e' }} />
                     </div>
                     <div>
@@ -668,6 +771,13 @@ export default function Editor() {
                     <span className="absolute top-0.5 rounded-full w-4 h-4 bg-white transition-all shadow-sm" style={{ left: showLogo ? '18px' : '2px' }} />
                   </button>
               </div>
+              {showLogo && (
+              <div className="flex items-center gap-3 py-2 px-3 rounded-md" style={{ background: '#f8f9fb', border: '1px solid #e2e5ea' }}>
+                  <label className="text-sm shrink-0" style={{ color: '#374151' }}>Logo Size</label>
+                  <input type="range" min="30" max="120" step="5" value={logoSize} onChange={(e) => setLogoSize(parseInt(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer" style={{ accentColor: '#2a7d5f' }} />
+                  <span className="text-xs font-mono w-10 text-right" style={{ color: '#6b7280' }}>{logoSize}px</span>
+              </div>
+              )}
               <div className="flex items-center justify-between py-2 px-3 rounded-md" style={{ background: '#f8f9fb', border: '1px solid #e2e5ea' }}>
                   <label className="text-sm" style={{ color: '#374151' }}>Logo Watermark on Pages</label>
                   <button type="button" onClick={() => setShowWatermark(!showWatermark)} className="relative w-9 h-5 rounded-full transition-colors" style={{ background: showWatermark ? '#2a7d5f' : '#d1d5db' }}>
@@ -675,11 +785,18 @@ export default function Editor() {
                   </button>
               </div>
               {showWatermark && (
+              <>
               <div className="flex items-center gap-3 py-2 px-3 rounded-md" style={{ background: '#f8f9fb', border: '1px solid #e2e5ea' }}>
                   <label className="text-sm shrink-0" style={{ color: '#374151' }}>Watermark Opacity</label>
                   <input type="range" min="0.01" max="0.15" step="0.01" value={watermarkOpacity} onChange={(e) => setWatermarkOpacity(parseFloat(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer" style={{ accentColor: '#2a7d5f' }} />
                   <span className="text-xs font-mono w-8 text-right" style={{ color: '#6b7280' }}>{Math.round(watermarkOpacity * 100)}%</span>
               </div>
+              <div className="flex items-center gap-3 py-2 px-3 rounded-md" style={{ background: '#f8f9fb', border: '1px solid #e2e5ea' }}>
+                  <label className="text-sm shrink-0" style={{ color: '#374151' }}>Watermark Size</label>
+                  <input type="range" min="80" max="400" step="10" value={watermarkSize} onChange={(e) => setWatermarkSize(parseInt(e.target.value))} className="flex-1 h-1.5 rounded-lg appearance-none cursor-pointer" style={{ accentColor: '#2a7d5f' }} />
+                  <span className="text-xs font-mono w-10 text-right" style={{ color: '#6b7280' }}>{watermarkSize}px</span>
+              </div>
+              </>
               )}
 
             </div>
@@ -811,7 +928,7 @@ export default function Editor() {
 
       {/* Right Panel - Preview */}
       <div className="w-1/2 h-full overflow-y-auto p-8 flex justify-center print:w-full print:bg-white print:p-0 print:overflow-visible" style={{ background: '#eceef2' }}>
-        <Preview data={paperData} showBlCoPo={showBlCoPo} showWatermark={showWatermark} showLogo={showLogo} watermarkOpacity={watermarkOpacity} />
+        <Preview ref={previewRef} data={paperData} showBlCoPo={showBlCoPo} showWatermark={showWatermark} showLogo={showLogo} watermarkOpacity={watermarkOpacity} logoSize={logoSize} watermarkSize={watermarkSize} />
       </div>
     </div>
   );
