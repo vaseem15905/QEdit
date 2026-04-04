@@ -4,6 +4,7 @@ export interface Question {
     marks: number;
     type: 'short' | 'long' | 'mcq' | 'break'; // Added 'break' for manual page breaks
     options?: string[]; // For MCQs
+    correctAnswer?: string; // Correct answer (A, B, C, D) for future MCQ test grading
     bl?: string; // Bloom's Level
     co?: string; // Course Outcome
     po?: string; // Program Outcome
@@ -50,4 +51,23 @@ export interface PaperData {
     header: PaperHeader;
     sections: Section[];
     settings?: PageSettings; // New
+}
+
+// Database record types
+export interface QuestionPaperRecord {
+    id: string;
+    title: string;
+    owner_email: string;
+    status: 'draft' | 'saved';
+    paper_data: PaperData;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface Collaboration {
+    id: string;
+    paper_id: string;
+    collaborator_email: string;
+    permission: 'edit' | 'view';
+    created_at: string;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Sparkles, Loader2 } from "lucide-react";
 import { Question } from "@/types";
 
 interface QuestionFormProps {
@@ -22,6 +22,9 @@ export default function QuestionForm({ onAddQuestion, editingQuestion, onCancelE
   const [bl, setBl] = useState("1");
   const [co, setCo] = useState("1");
   const [po, setPo] = useState("1");
+  const [isGeneratingBl, setIsGeneratingBl] = useState(false);
+  const [isGeneratingOrBl, setIsGeneratingOrBl] = useState(false);
+  const [blError, setBlError] = useState<string | null>(null);
   
   // Complex Question States
   const [hasOrQuestion, setHasOrQuestion] = useState(false);
@@ -133,6 +136,47 @@ export default function QuestionForm({ onAddQuestion, editingQuestion, onCancelE
     return string.charAt(0).toUpperCase() + string.slice(1);
   };
 
+  const generateBloomLevel = async (questionText: string, isOrQuestion = false) => {
+    const trimmed = questionText.trim();
+    if (!trimmed) {
+      setBlError("Please enter question text before generating Bloom's Level.");
+      setTimeout(() => setBlError(null), 3000);
+      return;
+    }
+    setBlError(null);
+    if (isOrQuestion) {
+      setIsGeneratingOrBl(true);
+    } else {
+      setIsGeneratingBl(true);
+    }
+    try {
+      const res = await fetch("/api/bloom", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionText: trimmed }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to generate Bloom's Level.");
+      }
+      if (isOrQuestion) {
+        setOrQuestionBl(data.bloomLevel);
+      } else {
+        setBl(data.bloomLevel);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "An error occurred.";
+      setBlError(msg);
+      setTimeout(() => setBlError(null), 4000);
+    } finally {
+      if (isOrQuestion) {
+        setIsGeneratingOrBl(false);
+      } else {
+        setIsGeneratingBl(false);
+      }
+    }
+  };
+
   const handleTextChange = (val: string) => {
       let v = val;
       if (autoCapitalize) v = v.replace(/(?:^|\.\s+)\w/g, c => c.toUpperCase()); // Sentence case logic or user's requested 'first letter' logic? 
@@ -236,12 +280,31 @@ export default function QuestionForm({ onAddQuestion, editingQuestion, onCancelE
       </div>
 
       {showBlCoPo && (
-      <div className="grid grid-cols-3 gap-4">
+      <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1" style={labelStyle}>BL</label>
-            <select value={bl} onChange={(e) => setBl(e.target.value)} className="w-full p-2 text-sm rounded-md" style={inputStyle}>
-                {[1, 2, 3, 4, 5, 6].map(i => <option key={i} value={i}>{i}</option>)}
-            </select>
+            <div className="flex gap-1 items-center">
+              <select value={bl} onChange={(e) => setBl(e.target.value)} className="flex-1 p-2 text-sm rounded-md" style={inputStyle}>
+                  {[1, 2, 3, 4, 5, 6].map(i => <option key={i} value={i}>{i}</option>)}
+              </select>
+              <button
+                type="button"
+                onClick={() => generateBloomLevel(text, false)}
+                disabled={isGeneratingBl}
+                title="Auto-generate Bloom's Level using AI"
+                className="flex items-center justify-center rounded-md transition-all"
+                style={{
+                  width: '30px', height: '30px', flexShrink: 0,
+                  background: isGeneratingBl ? '#e2e5ea' : 'linear-gradient(135deg, #7c3aed, #2a7d5f)',
+                  color: '#fff', border: 'none', cursor: isGeneratingBl ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isGeneratingBl
+                  ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                  : <Sparkles size={13} />}
+              </button>
+            </div>
           </div>
            <div>
             <label className="block text-sm font-medium mb-1" style={labelStyle}>CO</label>
@@ -255,6 +318,30 @@ export default function QuestionForm({ onAddQuestion, editingQuestion, onCancelE
                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => <option key={i} value={i}>{i}</option>)}
             </select>
           </div>
+        </div>
+        {blError && (
+          <p className="text-xs py-1 px-2 rounded-md" style={{ color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca' }}>
+            ⚠ {blError}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => generateBloomLevel(text, false)}
+          disabled={isGeneratingBl}
+          className="w-full flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-medium rounded-md transition-all"
+          style={{
+            background: isGeneratingBl ? '#e2e5ea' : 'linear-gradient(135deg, #7c3aed22, #2a7d5f22)',
+            color: isGeneratingBl ? '#9ca3af' : '#5b21b6',
+            border: '1px dashed #7c3aed66',
+            cursor: isGeneratingBl ? 'not-allowed' : 'pointer'
+          }}
+          onMouseEnter={(e) => { if (!isGeneratingBl) e.currentTarget.style.background = 'linear-gradient(135deg, #7c3aed33, #2a7d5f33)'; }}
+          onMouseLeave={(e) => { if (!isGeneratingBl) e.currentTarget.style.background = 'linear-gradient(135deg, #7c3aed22, #2a7d5f22)'; }}
+        >
+          {isGeneratingBl
+            ? <><Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> Generating Bloom&apos;s Level...</>
+            : <><Sparkles size={13} /> Auto Generate Bloom&apos;s Level</>}
+        </button>
       </div>
       )}
 
@@ -303,10 +390,33 @@ export default function QuestionForm({ onAddQuestion, editingQuestion, onCancelE
                 placeholder="Alternative question text..."
               />
                {showBlCoPo && (
-               <div className="grid grid-cols-3 gap-2">
-                  <div><label className="text-xs" style={labelStyle}>BL</label><select value={orQuestionBl} onChange={(e) => setOrQuestionBl(e.target.value)} className="w-full p-1 text-sm rounded-md" style={inputStyle}>{[1, 2, 3, 4, 5, 6].map(i => <option key={i} value={i}>{i}</option>)}</select></div>
+               <div className="space-y-2">
+                 <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-xs" style={labelStyle}>BL</label>
+                    <div className="flex gap-1 items-center">
+                      <select value={orQuestionBl} onChange={(e) => setOrQuestionBl(e.target.value)} className="flex-1 p-1 text-sm rounded-md" style={inputStyle}>{[1, 2, 3, 4, 5, 6].map(i => <option key={i} value={i}>{i}</option>)}</select>
+                      <button
+                        type="button"
+                        onClick={() => generateBloomLevel(orQuestionText, true)}
+                        disabled={isGeneratingOrBl}
+                        title="Auto-generate Bloom's Level for OR question"
+                        className="flex items-center justify-center rounded-md transition-all"
+                        style={{
+                          width: '26px', height: '26px', flexShrink: 0,
+                          background: isGeneratingOrBl ? '#e2e5ea' : 'linear-gradient(135deg, #7c3aed, #2a7d5f)',
+                          color: '#fff', border: 'none', cursor: isGeneratingOrBl ? 'not-allowed' : 'pointer'
+                        }}
+                      >
+                        {isGeneratingOrBl
+                          ? <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+                          : <Sparkles size={11} />}
+                      </button>
+                    </div>
+                  </div>
                   <div><label className="text-xs" style={labelStyle}>CO</label><select value={orQuestionCo} onChange={(e) => setOrQuestionCo(e.target.value)} className="w-full p-1 text-sm rounded-md" style={inputStyle}>{[1, 2, 3, 4, 5].map(i => <option key={i} value={i}>{i}</option>)}</select></div>
                   <div><label className="text-xs" style={labelStyle}>PO</label><select value={orQuestionPo} onChange={(e) => setOrQuestionPo(e.target.value)} className="w-full p-1 text-sm rounded-md" style={inputStyle}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => <option key={i} value={i}>{i}</option>)}</select></div>
+                 </div>
                </div>
                )}
           </div>

@@ -1,12 +1,18 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { PaperData, Question, Section, PageSettings } from "@/types";
 import QuestionForm from "./QuestionForm";
 import Preview from "./Preview";
 import Modal from "./ui/Modal";
-import { Printer, Trash2, Pencil, Settings, RotateCcw, Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { Printer, Trash2, Pencil, Settings, RotateCcw, Plus, ChevronDown, ChevronUp, Save, CheckCircle } from "lucide-react";
+
+interface EditorProps {
+  initialData?: PaperData;
+  paperId?: string | null;
+  onSave?: (data: PaperData, status: 'draft' | 'saved') => Promise<string | null>;
+}
 
 const formatDateDDMMYYYY = (dateStr: string) => {
   if (!dateStr) return '';
@@ -49,9 +55,10 @@ const initialPaperData: PaperData = {
   }
 };
 
-export default function Editor() {
-  const [paperData, setPaperData] = useState<PaperData>(initialPaperData);
-  const [activeSectionId, setActiveSectionId] = useState<string>(initialPaperData.sections[0].id);
+export default function Editor({ initialData, paperId: initialPaperId, onSave }: EditorProps = {}) {
+  const startData = initialData || initialPaperData;
+  const [paperData, setPaperData] = useState<PaperData>(startData);
+  const [activeSectionId, setActiveSectionId] = useState<string>(startData.sections[0]?.id || 'sec-1');
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [showPageSetup, setShowPageSetup] = useState(false);
   const [showSectionModal, setShowSectionModal] = useState(false);
@@ -67,21 +74,90 @@ export default function Editor() {
   const [logoSize, setLogoSize] = useState(60);
   const [watermarkSize, setWatermarkSize] = useState(200);
   const [isSavingPdf, setIsSavingPdf] = useState(false);
+  const [isSavingDb, setIsSavingDb] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [currentPaperId, setCurrentPaperId] = useState<string | null>(initialPaperId || null);
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+
+  // Auto-save draft on changes (5s debounce)
+  const triggerAutoSave = useCallback((data: PaperData) => {
+    if (!onSave) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(async () => {
+      setSaveStatus('saving');
+      const id = await onSave(data, 'draft');
+      if (id) {
+        setCurrentPaperId(id);
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 2000);
+      } else {
+        setSaveStatus('error');
+      }
+    }, 5000);
+  }, [onSave]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, []);
+
+  // Wrap setPaperData to trigger autosave
+  const setPaperDataWithAutoSave = useCallback((updater: PaperData | ((prev: PaperData) => PaperData)) => {
+    setPaperData(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      triggerAutoSave(next);
+      return next;
+    });
+  }, [triggerAutoSave]);
+
+  const handleSaveDraft = async () => {
+    if (!onSave || isSavingDb) return;
+    setIsSavingDb(true);
+    setSaveStatus('saving');
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    const id = await onSave(paperData, 'draft');
+    if (id) {
+      setCurrentPaperId(id);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } else {
+      setSaveStatus('error');
+    }
+    setIsSavingDb(false);
+  };
+
+  const handleSaveFinal = async () => {
+    if (!onSave || isSavingDb) return;
+    setIsSavingDb(true);
+    setSaveStatus('saving');
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    const id = await onSave(paperData, 'saved');
+    if (id) {
+      setCurrentPaperId(id);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } else {
+      setSaveStatus('error');
+    }
+    setIsSavingDb(false);
+  };
   const calculatedTotalMarks = paperData.sections.reduce(
     (acc, section) => acc + section.questions.reduce((qAcc, q) => qAcc + q.marks, 0),
     0
   );
 
   const handleHeaderChange = (field: keyof typeof paperData.header, value: string | number) => {
-    setPaperData((prev) => ({
+    setPaperDataWithAutoSave((prev) => ({
       ...prev,
       header: { ...prev.header, [field]: value },
     }));
   };
 
   const updateSettings = (field: keyof PageSettings, value: any) => {
-      setPaperData(prev => ({
+      setPaperDataWithAutoSave(prev => ({
           ...prev,
           settings: {
               ...prev.settings!,
@@ -91,7 +167,7 @@ export default function Editor() {
   };
 
   const resetSettings = () => {
-      setPaperData(prev => ({
+      setPaperDataWithAutoSave(prev => ({
           ...prev,
           settings: initialPaperData.settings
       }));
@@ -115,7 +191,7 @@ export default function Editor() {
       defaultMarks: 2,
       questions: [],
     };
-    setPaperData((prev) => ({
+    setPaperDataWithAutoSave((prev) => ({
       ...prev,
       sections: [...prev.sections, newSection],
     }));
@@ -129,7 +205,7 @@ export default function Editor() {
   };
 
   const updateSectionField = (sectionId: string, field: keyof Section, value: any) => {
-      setPaperData(prev => ({
+      setPaperDataWithAutoSave(prev => ({
           ...prev,
           sections: prev.sections.map(sec => 
               sec.id === sectionId ? { ...sec, [field]: value } : sec
@@ -138,7 +214,7 @@ export default function Editor() {
   };
 
   const moveQuestion = (sectionId: string, index: number, direction: 'up' | 'down') => {
-      setPaperData(prev => {
+      setPaperDataWithAutoSave(prev => {
           const newSections = prev.sections.map(sec => {
               if (sec.id === sectionId) {
                   const newQuestions = [...sec.questions];
@@ -157,7 +233,7 @@ export default function Editor() {
 
   const deleteSection = (sectionId: string) => {
     if (paperData.sections.length === 1) return;
-    setPaperData((prev) => {
+    setPaperDataWithAutoSave((prev) => {
       const newSections = prev.sections.filter((s) => s.id !== sectionId);
       return { ...prev, sections: newSections };
     });
@@ -169,7 +245,7 @@ export default function Editor() {
 
   const addQuestion = (question: Question) => {
     if (editingQuestion) {
-      setPaperData((prev) => ({
+      setPaperDataWithAutoSave((prev) => ({
         ...prev,
         sections: prev.sections.map((sec) => {
           if (sec.id === activeSectionId) {
@@ -183,7 +259,7 @@ export default function Editor() {
       }));
       setEditingQuestion(null);
     } else {
-      setPaperData((prev) => ({
+      setPaperDataWithAutoSave((prev) => ({
         ...prev,
         sections: prev.sections.map((sec) => {
           if (sec.id === activeSectionId) {
@@ -213,7 +289,7 @@ export default function Editor() {
   };
 
   const deleteQuestion = (sectionId: string, questionId: string) => {
-    setPaperData((prev) => ({
+    setPaperDataWithAutoSave((prev) => ({
       ...prev,
       sections: prev.sections.map((sec) => {
         if (sec.id === sectionId) {
@@ -336,7 +412,42 @@ export default function Editor() {
               <p className="text-[9px] text-center mt-0.5" style={{ color: '#b0b5be', letterSpacing: '0.5px' }}>Crafted with💚 by Chan&apos;s Team</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            {/* Save status indicator */}
+            {onSave && saveStatus !== 'idle' && (
+              <span className="text-[11px] flex items-center gap-1 px-2 py-1 rounded-md" style={{
+                color: saveStatus === 'saved' ? '#2a7d5f' : saveStatus === 'error' ? '#dc2626' : '#6b7280',
+                background: saveStatus === 'saved' ? '#e8f5ee' : saveStatus === 'error' ? '#fef2f2' : '#f8f9fb',
+              }}>
+                {saveStatus === 'saving' && '⏳ Saving...'}
+                {saveStatus === 'saved' && <><CheckCircle size={12} /> Saved</>}
+                {saveStatus === 'error' && '⚠ Save failed'}
+              </span>
+            )}
+            {onSave && (
+              <>
+                <button
+                  onClick={handleSaveDraft}
+                  disabled={isSavingDb}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors disabled:opacity-60"
+                  style={{ background: '#fff', color: '#4b5563', border: '1px solid #d1d5db' }}
+                  onMouseEnter={(e) => { if (!isSavingDb) { e.currentTarget.style.background = '#f1f3f6'; } }}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#fff')}
+                >
+                  <Save size={15} /> Draft
+                </button>
+                <button
+                  onClick={handleSaveFinal}
+                  disabled={isSavingDb}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-white transition-colors disabled:opacity-60"
+                  style={{ background: '#1e6b4f' }}
+                  onMouseEnter={(e) => { if (!isSavingDb) e.currentTarget.style.background = '#175a42'; }}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#1e6b4f')}
+                >
+                  <CheckCircle size={15} /> Save Final
+                </button>
+              </>
+            )}
             <button
                 onClick={() => setShowPageSetup(!showPageSetup)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm transition-colors"
