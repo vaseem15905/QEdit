@@ -1,8 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
 import DashboardClient from './DashboardClient';
 import { QuestionPaperRecord } from '@/types';
 import { getAdminRole } from '@/lib/admin';
+import { ADMIN_EMAIL } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,11 +12,45 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // 1. Must be logged in
   if (!user) {
     redirect('/auth');
   }
 
-  const email = user.email || '';
+  const email = (user.email || '').toLowerCase().trim();
+
+  // 2. Super-admin always gets through
+  if (email !== ADMIN_EMAIL.toLowerCase()) {
+    // 3. Check approval status for everyone else
+    const supabaseAdmin = createAdminClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { data: record } = await supabaseAdmin
+      .from('authorized_users')
+      .select('status')
+      .eq('email', email)
+      .maybeSingle();
+
+    const status = record?.status;
+
+    if (status === 'rejected') {
+      // Sign them out and send back to login with error
+      await supabase.auth.signOut();
+      redirect('/auth?error=rejected');
+    }
+
+    if (!record || status === 'pending') {
+      // Not yet approved — hold them at the pending page
+      redirect('/auth/pending');
+    }
+
+    // status must be 'approved' or 'admin' to continue
+    if (status !== 'approved' && status !== 'admin') {
+      redirect('/auth/pending');
+    }
+  }
 
   // Fetch user's own papers
   const { data: ownPapers } = await supabase

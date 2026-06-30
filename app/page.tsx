@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import confetti from 'canvas-confetti';
 
 function AnimatedCursor() {
   const [pos, setPos] = useState({ x: 55, y: 45 });
@@ -43,9 +44,18 @@ function AnimatedCursor() {
       {/* Original first cursor — big, clean, rounded corners */}
       <svg width="52" height="60" viewBox="0 0 24 28" fill="none"
         style={{ filter: 'drop-shadow(0 0 10px rgba(74,222,128,0.8)) drop-shadow(0 2px 6px rgba(0,0,0,0.5))', display: 'block' }}>
+        {/* Outer light green border */}
+        <path d="M3 2L21 14L12 15L8 26L3 2Z"
+          fill="none"
+          stroke="#a7f3d0"
+          strokeWidth="4"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+        {/* Inner cursor fill, corner radiused using its own thick stroke */}
         <path d="M3 2L21 14L12 15L8 26L3 2Z"
           fill="#1a3d2b"
-          stroke="white"
+          stroke="#1a3d2b"
           strokeWidth="2.5"
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -72,30 +82,68 @@ function AnimatedCursor() {
 
 
 export default function LandingPage() {
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [contactForm, setContactForm] = useState({ name: '', email: '', whatsapp: '', organization: '', message: '' });
+  const [contactStatus, setContactStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setContactStatus('loading');
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contactForm),
+      });
+      if (res.ok) {
+        setContactStatus('success');
+        setContactForm({ name: '', email: '', whatsapp: '', organization: '', message: '' });
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#4ade80', '#2a7d5f', '#a7f3d0'], zIndex: 9999 });
+      } else {
+        setContactStatus('error');
+      }
+    } catch {
+      setContactStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 20);
+    // Initialize upon mount
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
     <div className="min-h-screen bg-white selection:bg-[#c4e5d3] selection:text-[#1e3c2f] font-sans overflow-x-hidden">
       
       {/* Navigation */}
-      <nav className="sticky top-0 z-50" style={{
-        background: 'rgba(235, 248, 241, 0.95)',
-        backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(42,125,95,0.18)',
-      }}>
+      <nav 
+        className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 border-b ${
+          isScrolled 
+            ? 'backdrop-blur-xl shadow-sm' 
+            : 'bg-transparent border-transparent'
+        }`} 
+        style={isScrolled ? {
+          background: 'rgba(235, 248, 241, 0.95)',
+          borderBottomColor: 'rgba(42,125,95,0.18)',
+        } : {}}
+      >
         <div className="max-w-7xl mx-auto px-6 lg:px-10 flex items-center justify-between py-5">
           <div className="flex items-center gap-3">
             <Image src="/logohead.png" alt="QEdit" width={48} height={48} className="w-11 h-auto object-contain" priority />
             <span className="text-2xl font-extrabold tracking-tighter" style={{ color: '#1a3d2b' }}>QEdit</span>
           </div>
           {/* Right side — nav links + auth */}
-          <div className="flex items-center gap-6">
-            <div className="hidden md:flex items-center gap-5">
-              <Link href="#" className="text-sm font-semibold hover:opacity-70 transition-opacity" style={{ color: '#2a7d5f' }}>Features</Link>
-              <Link href="#" className="text-sm font-semibold hover:opacity-70 transition-opacity" style={{ color: '#2a7d5f' }}>Docs</Link>
-              <Link href="/admin" className="text-sm font-semibold hover:opacity-70 transition-opacity" style={{ color: '#2a7d5f' }}>Sys-Ops</Link>
+          <div className="flex items-center gap-7">
+            <div className="hidden md:flex items-center gap-7">
+              <Link href="#" className="text-lg font-semibold hover:opacity-70 transition-opacity" style={{ color: '#2a7d5f' }}>About</Link>
+              <Link href="#" className="text-lg font-semibold hover:opacity-70 transition-opacity" style={{ color: '#2a7d5f' }}>Features</Link>
+              <Link href="#" className="text-lg font-semibold hover:opacity-70 transition-opacity" style={{ color: '#2a7d5f' }}>Docs</Link>
+              <Link href="#contact" className="text-lg font-semibold hover:opacity-70 transition-opacity" style={{ color: '#2a7d5f' }}>Contact</Link>
             </div>
-            <div className="w-px h-5 bg-[#2a7d5f]/20 hidden md:block" />
-            <Link href="/auth" className="text-sm font-semibold transition-opacity hover:opacity-70 hidden sm:block" style={{ color: '#2a7d5f' }}>Sign In</Link>
-            <Link href="/auth/register" className="px-6 py-2.5 rounded-full text-sm font-bold text-white bg-[#2a7d5f] hover:bg-[#1f5e47] transition-colors">Get Started &rarr;</Link>
+            <Link href="/auth" className="px-7 py-3 rounded-full text-lg font-bold text-white bg-[#2a7d5f] hover:bg-[#1f5e47] transition-colors">Get Started &rarr;</Link>
           </div>
         </div>
       </nav>
@@ -103,43 +151,48 @@ export default function LandingPage() {
 
       <main>
         {/* Hero Section */}
-        <section className="relative overflow-hidden pt-20 pb-28 lg:pt-28 lg:pb-36">
-          {/* Radial glow background */}
-          <div className="absolute inset-x-0 top-0 h-[700px] pointer-events-none"
-            style={{ background: 'radial-gradient(ellipse 80% 50% at 50% -10%, rgba(42,125,95,0.12) 0%, transparent 70%)', zIndex: 0 }} />
+        <section className="relative overflow-hidden pt-32 pb-28 lg:pt-40 lg:pb-36">
+          
+          {/* Checkered Grid Background with Filled Blocks and Skew */}
+          <div className="absolute inset-x-0 top-0 h-[800px] pointer-events-none z-0 overflow-hidden">
+            {/* The skew container - shifted out slightly so the corners don't show a gap */}
+            <div className="absolute -inset-30 skew-y-6 opacity-60">
+              <svg className="absolute w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  {/* The 40x40 Grid */}
+                  <pattern id="grid-pattern" width="40" height="40" patternUnits="userSpaceOnUse">
+                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#2a7d5f" strokeWidth="1.5" strokeOpacity="0.6" />
+                  </pattern>
+                  {/* The scattered filled squares mapped exactly to the grid */}
+                  <pattern id="filled-squares" width="480" height="480" patternUnits="userSpaceOnUse">
+                    <rect x="80"  y="0"   width="80"  height="40"  fill="#2a7d5f" fillOpacity="0.18" />
+                    <rect x="320" y="0"   width="40"  height="80"  fill="#4ade80" fillOpacity="0.14" />
 
-          {/* Left gradient — wide, strong, shifted more center */}
-          <div className="absolute left-0 top-0 bottom-0 w-[560px] pointer-events-none hidden lg:block" style={{ background: 'linear-gradient(to right, rgba(42,125,95,0.25) 0%, rgba(134,239,172,0.14) 45%, transparent 100%)', zIndex: 0 }} />
-          {/* Left doodles — much bigger, shifted toward center */}
-          <div className="absolute pointer-events-none hidden lg:block" style={{ left: '4%', top: 20, zIndex: 1 }}>
-            <svg width="260" height="620" viewBox="0 0 260 620" fill="none" opacity="0.65">
-              <circle cx="50" cy="50" r="42" stroke="#2a7d5f" strokeWidth="3.5" strokeDasharray="12 7"/>
-              <circle cx="210" cy="160" r="26" stroke="#2a7d5f" strokeWidth="3" fill="rgba(42,125,95,0.1)"/>
-              <circle cx="80" cy="260" r="12" fill="#4ade80" opacity="0.6"/>
-              <path d="M30 320 Q110 240 190 320 Q250 380 80 430" stroke="#2a7d5f" strokeWidth="3" fill="none" strokeLinecap="round"/>
-              <rect x="120" y="480" width="80" height="80" rx="16" stroke="#2a7d5f" strokeWidth="3" strokeDasharray="9 5" fill="rgba(42,125,95,0.07)"/>
-              <circle cx="40" cy="565" r="20" stroke="#4ade80" strokeWidth="2.5"/>
-              <path d="M12 600 L52 600 M32 578 L32 622" stroke="#2a7d5f" strokeWidth="3.5" strokeLinecap="round"/>
-              <circle cx="230" cy="375" r="8" fill="#2a7d5f" opacity="0.55"/>
-              <path d="M170 110 L210 110 M190 90 L190 130" stroke="#2a7d5f" strokeWidth="3" strokeLinecap="round"/>
-            </svg>
-          </div>
+                    <rect x="40"  y="80"  width="40"  height="40"  fill="#2a7d5f" fillOpacity="0.20" />
+                    <rect x="200" y="80"  width="80"  height="40"  fill="#4ade80" fillOpacity="0.14" />
+                    <rect x="440" y="80"  width="40"  height="80"  fill="#2a7d5f" fillOpacity="0.16" />
 
-          {/* Right gradient — wide, strong, shifted more center */}
-          <div className="absolute right-0 top-0 bottom-0 w-[560px] pointer-events-none hidden lg:block" style={{ background: 'linear-gradient(to left, rgba(42,125,95,0.25) 0%, rgba(134,239,172,0.14) 45%, transparent 100%)', zIndex: 0 }} />
-          {/* Right doodles — much bigger, shifted toward center */}
-          <div className="absolute pointer-events-none hidden lg:block" style={{ right: '4%', top: 10, zIndex: 1 }}>
-            <svg width="270" height="660" viewBox="0 0 270 660" fill="none" opacity="0.65">
-              <path d="M135 16 L155 58 L200 58 L167 86 L180 130 L135 104 L90 130 L103 86 L70 58 L115 58 Z" stroke="#2a7d5f" strokeWidth="3" fill="rgba(42,125,95,0.08)"/>
-              <circle cx="40" cy="195" r="20" stroke="#4ade80" strokeWidth="3"/>
-              <circle cx="240" cy="220" r="52" stroke="#2a7d5f" strokeWidth="3" strokeDasharray="10 6" fill="rgba(42,125,95,0.05)"/>
-              <path d="M20 350 C70 310 120 368 170 342 C210 318 248 348 265 330" stroke="#2a7d5f" strokeWidth="3" fill="none" strokeLinecap="round"/>
-              <rect x="28" y="440" width="96" height="96" rx="20" stroke="#2a7d5f" strokeWidth="3" strokeDasharray="10 5" fill="rgba(42,125,95,0.06)"/>
-              <circle cx="220" cy="530" r="32" stroke="#4ade80" strokeWidth="3" strokeDasharray="6 4"/>
-              <circle cx="130" cy="640" r="11" fill="#2a7d5f" opacity="0.5"/>
-              <path d="M195 100 L240 100 M217 78 L217 122" stroke="#2a7d5f" strokeWidth="3.5" strokeLinecap="round"/>
-              <circle cx="40" cy="540" r="7" fill="#4ade80" opacity="0.6"/>
-            </svg>
+                    <rect x="160" y="160" width="40"  height="80"  fill="#2a7d5f" fillOpacity="0.18" />
+                    <rect x="360" y="160" width="80"  height="40"  fill="#4ade80" fillOpacity="0.13" />
+
+                    <rect x="0"   y="240" width="40"  height="40"  fill="#4ade80" fillOpacity="0.15" />
+                    <rect x="280" y="240" width="80"  height="40"  fill="#2a7d5f" fillOpacity="0.18" />
+
+                    <rect x="80"  y="320" width="40"  height="80"  fill="#4ade80" fillOpacity="0.14" />
+                    <rect x="360" y="320" width="80"  height="40"  fill="#2a7d5f" fillOpacity="0.16" />
+
+                    <rect x="200" y="400" width="80"  height="40"  fill="#2a7d5f" fillOpacity="0.18" />
+                    <rect x="440" y="440" width="40"  height="40"  fill="#4ade80" fillOpacity="0.14" />
+                  </pattern>
+                </defs>
+                {/* Draw Filled Squares layer */}
+                <rect width="100%" height="100%" fill="url(#filled-squares)" />
+                {/* Draw the Grid lines over top */}
+                <rect width="100%" height="100%" fill="url(#grid-pattern)" />
+              </svg>
+            </div>
+            {/* A soft fade out mask at the bottom so it blends with content */}
+            <div className="absolute inset-0 bg-linear-to-b from-transparent via-white/80 to-white"></div>
           </div>
 
           <div className="relative z-10 max-w-5xl mx-auto px-6 lg:px-8 text-center">
@@ -157,12 +210,12 @@ export default function LandingPage() {
               Design, manage, and export professional question papers in minutes. Real-time split-pane editing, Bloom&apos;s Taxonomy tagging, and one-click PDF generation — all in one platform.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Link href="/auth/register" 
-                className="w-full sm:w-auto px-7 py-3.5 rounded-xl text-base font-bold text-white bg-[#2a7d5f] hover:bg-[#1f5e47] shadow-[0_8px_20px_rgba(42,125,95,0.3)] hover:shadow-[0_12px_25px_rgba(42,125,95,0.4)] transition-all hover:-translate-y-0.5">
-                Start Building Free
+              <Link href="#" 
+                className="w-full sm:w-auto px-7 py-3.5 rounded-xl text-base font-bold text-gray-900 bg-white border border-gray-200 hover:border-gray-300 hover:bg-gray-50 shadow-sm transition-all hover:-translate-y-0.5">
+                View Docs
               </Link>
               <Link href="/auth" 
-                className="w-full sm:w-auto px-7 py-3.5 rounded-xl text-base font-bold text-gray-700 bg-white border-2 border-gray-100 hover:border-gray-200 hover:bg-gray-50 transition-all">
+                className="w-full sm:w-auto px-7 py-3.5 rounded-xl text-base font-bold text-white bg-[#2a7d5f] hover:bg-[#1f5e47] shadow-[0_8px_20px_rgba(42,125,95,0.3)] hover:shadow-[0_12px_25px_rgba(42,125,95,0.4)] transition-all hover:-translate-y-0.5">
                 Login to Dashboard
               </Link>
             </div>
@@ -170,7 +223,7 @@ export default function LandingPage() {
             {/* Editor Preview Card Wrapper */}
             <div className="relative mt-16 max-w-5xl mx-auto group">
               {/* Glowing gradient aura behind the card */}
-              <div className="absolute -inset-4 bg-linear-to-r from-[#2a7d5f]/20 via-[#4ade80]/20 to-[#2a7d5f]/20 blur-3xl opacity-70 group-hover:opacity-100 transition-opacity duration-700 rounded-[40px]"></div>
+              <div className="absolute -inset-8 bg-linear-to-r from-[#2a7d5f]/40 via-[#4ade80]/50 to-[#2a7d5f]/40 blur-[80px] opacity-80 group-hover:opacity-100 transition-opacity duration-700 rounded-[60px]"></div>
               
               {/* Editor Preview Card with animated cursor */}
               <div className="relative border border-gray-200/80 rounded-[28px] p-1.5 bg-white shadow-[0_32px_80px_-15px_rgba(0,0,0,0.15)]">
@@ -232,8 +285,9 @@ export default function LandingPage() {
                     </div>
                     {/* Bottom buttons */}
                     <div className="flex gap-2 mt-auto">
-                       <div className="h-7 flex-1 bg-gray-200 rounded-lg"></div>
-                       <div className="h-7 flex-1 bg-[#2a7d5f] rounded-lg opacity-90"></div>
+                      <div className="h-7 px-3 bg-[#2a7d5f] rounded-lg opacity-90 flex items-center justify-center gap-1">
+                        <span style={{ fontSize: 8, color: '#fff', fontWeight: 800, letterSpacing: '0.04em' }}>✦ Auto BL</span>
+                      </div>
                     </div>
                   </div>
                   
@@ -300,9 +354,8 @@ export default function LandingPage() {
 
         {/* Features Section — green bg, white text */}
         <section className="py-24 relative overflow-hidden" style={{ background: '#1a3d2b' }}>
-          {/* Subtle dot grid */}
-          <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, #4ade80 1.5px, transparent 1.5px)', backgroundSize: '32px 32px' }}></div>
           
+
           <div className="relative max-w-7xl mx-auto px-6 lg:px-8">
             <div className="text-center mb-16">
               <h2 className="text-xs font-extrabold tracking-[0.2em] uppercase mb-3" style={{ color: '#86efac' }}>Enterprise Grade Features</h2>
@@ -342,6 +395,130 @@ export default function LandingPage() {
             <Link href="/auth/register" className="inline-flex items-center gap-2 px-8 py-4 rounded-xl text-base font-bold text-white bg-[#2a7d5f] hover:bg-[#1f5e47] shadow-[0_8px_20px_rgba(42,125,95,0.3)] hover:shadow-[0_14px_28px_rgba(42,125,95,0.4)] transition-all hover:-translate-y-1">
               Apply for Access &rarr;
             </Link>
+          </div>
+        </section>
+
+        {/* Contact / Inquire Section */}
+        <section id="contact" className="relative py-32 bg-[#1a3d2b] overflow-hidden">
+          {/* Ambient Glowing Background */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] bg-[#2a7d5f] rounded-full blur-[140px] opacity-20"></div>
+            <div className="absolute bottom-[-20%] right-[-10%] w-[800px] h-[800px] bg-[#1e6b4f] rounded-full blur-[140px] opacity-30"></div>
+            {/* Extremely faint grid matching hero */}
+            <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+          </div>
+
+          <div className="relative z-10 max-w-[1400px] mx-auto px-6 lg:px-8">
+            <div className="grid lg:grid-cols-12 gap-16 lg:gap-20 items-center">
+              
+              {/* Left Side: Premium Text & Contact Info */}
+              <div className="lg:col-span-5 text-left">
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#2a7d5f]/30 bg-[#2a7d5f]/10 backdrop-blur-md mb-8">
+                  <span className="w-2 h-2 rounded-full bg-[#4ade80] animate-pulse"></span>
+                  <span className="text-xs font-bold uppercase tracking-[0.2em] text-[#a7f3d0]">Support & Setup</span>
+                </div>
+                
+                <h2 className="text-4xl lg:text-6xl font-black text-white tracking-tight mb-6 leading-[1.1]">
+                  Ready to redefine <br/><span className="text-[#a7f3d0]">assessments?</span>
+                </h2>
+                
+                <p className="text-lg text-[#c4e5d3] font-medium mb-12 leading-relaxed opacity-90">
+                  Whether you need technical integration assistance or a tailored campus-wide demo, our engineering team is here to help you deploy seamlessly.
+                </p>
+                
+                <div className="space-y-5">
+                  <a href="mailto:support@qedit.com" className="group flex items-center p-5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] hover:border-[#2a7d5f]/40 transition-all duration-300">
+                    <div className="w-14 h-14 rounded-full bg-[#2a7d5f]/20 flex items-center justify-center mr-5 group-hover:scale-110 transition-transform duration-300">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-[#c4e5d3]/60 uppercase tracking-wider mb-1">Direct Email</div>
+                      <div className="text-lg font-bold text-white group-hover:text-[#4ade80] transition-colors">support@qedit.com</div>
+                    </div>
+                  </a>
+                  
+                  <a href="tel:+918608252352" className="group flex items-center p-5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] hover:border-[#2a7d5f]/40 transition-all duration-300">
+                    <div className="w-14 h-14 rounded-full bg-[#2a7d5f]/20 flex items-center justify-center mr-5 group-hover:scale-110 transition-transform duration-300">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-[#c4e5d3]/60 uppercase tracking-wider mb-1">priority line</div>
+                      <div className="text-lg font-bold text-white group-hover:text-[#4ade80] transition-colors">+91 86082 52352</div>
+                    </div>
+                  </a>
+                </div>
+              </div>
+
+              {/* Right Side: Form Component */}
+              <div className="lg:col-span-7 relative">
+                {/* Form Wrapper with glass effect behind the actual form */}
+                <div className="absolute inset-0 bg-gradient-to-b from-[#2a7d5f]/20 to-transparent blur-2xl rounded-[40px] transform rotate-1 scale-105"></div>
+                
+                <div className="relative bg-white rounded-[32px] p-8 sm:p-12 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] border border-gray-100/50">
+                  {contactStatus === 'success' ? (
+                    <div className="text-center py-16 animate-in fade-in zoom-in-95 duration-500">
+                      <div className="w-24 h-24 rounded-full bg-[#f0f7f4] border-8 border-[#e8f5ee] flex items-center justify-center mx-auto mb-8">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#2a7d5f" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-[pulse_2s_infinite]"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                      </div>
+                      <h3 className="text-3xl font-black text-white mb-3">Thanks for reaching out!</h3>
+                      <p className="text-lg text-emerald-100/70 font-medium mb-10 max-w-sm mx-auto">We successfully received your inquiry. Our team will jump right on it and get back to you shortly.</p>
+                      <button onClick={() => setContactStatus('idle')} className="px-8 py-3.5 rounded-xl text-sm font-extrabold bg-[#0a1f16] text-[#4ade80] hover:text-white hover:bg-[#2a7d5f] transition-all">Submit Another Inquiry</button>
+                    </div>
+                  ) : (
+                    <div>
+                      <h3 className="text-2xl font-black text-gray-900 mb-8 tracking-tight">Send an Inquiry Request</h3>
+                      <form onSubmit={handleContactSubmit} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-1.5 text-left">
+                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Full Name</label>
+                             <input required type="text" value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                               className="w-full px-5 py-4 rounded-xl bg-[#f8f9fb] border border-gray-100 focus:bg-white focus:border-[#2a7d5f] focus:ring-4 focus:ring-[#2a7d5f]/10 outline-none transition-all placeholder-gray-400 font-semibold text-gray-900" placeholder="Jane Doe" />
+                          </div>
+                          <div className="space-y-1.5 text-left">
+                             <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Work Email</label>
+                             <input required type="email" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                               className="w-full px-5 py-4 rounded-xl bg-[#f8f9fb] border border-gray-100 focus:bg-white focus:border-[#2a7d5f] focus:ring-4 focus:ring-[#2a7d5f]/10 outline-none transition-all placeholder-gray-400 font-semibold text-gray-900" placeholder="jane@university.edu" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                           <div className="space-y-1.5 text-left">
+                              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Institution</label>
+                              <input type="text" value={contactForm.organization} onChange={(e) => setContactForm({ ...contactForm, organization: e.target.value })}
+                                className="w-full px-5 py-4 rounded-xl bg-[#f8f9fb] border border-gray-100 focus:bg-white focus:border-[#2a7d5f] focus:ring-4 focus:ring-[#2a7d5f]/10 outline-none transition-all placeholder-gray-400 font-semibold text-gray-900" placeholder="e.g. SRM Institute" />
+                           </div>
+                           <div className="space-y-1.5 text-left">
+                              <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">WhatsApp (Optional)</label>
+                              <input type="tel" value={contactForm.whatsapp} onChange={(e) => setContactForm({ ...contactForm, whatsapp: e.target.value })}
+                                className="w-full px-5 py-4 rounded-xl bg-[#f8f9fb] border border-gray-100 focus:bg-white focus:border-[#2a7d5f] focus:ring-4 focus:ring-[#2a7d5f]/10 outline-none transition-all placeholder-gray-400 font-semibold text-gray-900" placeholder="+91 XXXXX XXXXX" />
+                           </div>
+                        </div>
+                        <div className="space-y-1.5 text-left">
+                           <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">How can we help?</label>
+                           <textarea required rows={4} value={contactForm.message} onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                             className="w-full px-5 py-4 rounded-xl bg-[#f8f9fb] border border-gray-100 focus:bg-white focus:border-[#2a7d5f] focus:ring-4 focus:ring-[#2a7d5f]/10 outline-none transition-all resize-none placeholder-gray-400 font-semibold text-gray-900" placeholder="Tell us about your assessment goals..."></textarea>
+                        </div>
+                        
+                        {contactStatus === 'error' && (
+                          <div className="p-4 rounded-xl bg-red-50 text-red-700 text-sm font-bold border border-red-100 flex items-center gap-3">
+                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                             Failed to seamlessly send message. Please verify your connection and try again.
+                          </div>
+                        )}
+                        
+                        <button type="submit" disabled={contactStatus === 'loading'}
+                          className="w-full mt-4 px-8 py-4 rounded-xl text-base font-black text-white bg-[#2a7d5f] hover:bg-[#1e6b4f] hover:shadow-[0_8px_25px_rgba(42,125,95,0.4)] hover:-translate-y-1 transition-all duration-300 disabled:opacity-70 disabled:hover:translate-y-0 disabled:hover:shadow-none flex items-center justify-center gap-2 group">
+                          {contactStatus === 'loading' ? (
+                            <span className="flex items-center gap-3"><svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Initializing Secure Link...</span>
+                          ) : (
+                            <>Initialize Request <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="group-hover:translate-x-1 transition-transform"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></>
+                          )}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </main>

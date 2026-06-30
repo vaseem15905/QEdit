@@ -27,6 +27,9 @@ function AuthForm() {
     if (searchParams.get('error') === 'auth_failed') {
       setError('Authentication failed. Please try again.');
     }
+    if (searchParams.get('error') === 'rejected') {
+      setError('Your access request has been rejected. Please contact the administrator.');
+    }
   }, [searchParams]);
 
   const handleGoogleLogin = async () => {

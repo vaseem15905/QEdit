@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import {
   LogOut, Shield, Users, UserCheck, UserX, Plus,
-  RefreshCw, Clock, CheckCircle, XCircle, Trash2, Database, Settings, BookOpen, LayoutDashboard, Search, ChevronRight
+  RefreshCw, Clock, CheckCircle, XCircle, Trash2, Database, Settings, BookOpen, LayoutDashboard, Search, ChevronRight, Mail
 } from 'lucide-react';
 
 interface AdminClientProps {
@@ -34,7 +34,7 @@ export default function AdminClient({ user, role = 'admin' }: AdminClientProps) 
   const supabase = createClient();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<'users' | 'mcq' | 'settings'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'mcq' | 'settings' | 'inquiries'>('users');
   const [userFilter, setUserFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'admin'>('pending');
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -45,6 +45,29 @@ export default function AdminClient({ user, role = 'admin' }: AdminClientProps) 
   const [addSuccess, setAddSuccess] = useState('');
 
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const [inquiries, setInquiries] = useState<any[]>([]);
+  const [loadingInquiries, setLoadingInquiries] = useState(false);
+  const [inquiriesError, setInquiriesError] = useState('');
+
+  const fetchInquiries = async () => {
+    setLoadingInquiries(true);
+    setInquiriesError('');
+    try {
+      const res = await fetch('/api/admin/inquiries');
+      const data = await res.json();
+      if (res.ok) setInquiries(data.inquiries || []);
+      else setInquiriesError(data.error || 'Failed to load inquiries');
+    } catch {
+      setInquiriesError('Network error loading inquiries');
+    } finally {
+      setLoadingInquiries(false);
+    }
+  };
+
+  useEffect(() => { 
+    if (activeTab === 'inquiries') fetchInquiries();
+  }, [activeTab]);
 
   const fetchUsers = async () => {
     setLoadingUsers(true);
@@ -147,6 +170,7 @@ export default function AdminClient({ user, role = 'admin' }: AdminClientProps) 
           {[
             ['users', Users, 'User Management'],
             ['mcq', BookOpen, 'MCQ Questions'],
+            ...(role === 'superadmin' ? [['inquiries', Mail, 'Inquiries']] : []),
             ['settings', Settings, 'System Settings'],
           ].map(([id, Icon, label]) => {
             const isActive = activeTab === id;
@@ -500,6 +524,66 @@ export default function AdminClient({ user, role = 'admin' }: AdminClientProps) 
                   className="mt-8 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold bg-white border-2 border-[#2a7d5f] text-[#2a7d5f] hover:bg-[#e8f5ee] transition-colors">
                   <ChevronRight size={16} /> Return to User Management
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── INQUIRIES (SUPER ADMINS) ── */}
+          {activeTab === 'inquiries' && role === 'superadmin' && (
+            <div className="animate-in fade-in zoom-in-95 duration-300 max-w-5xl">
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden mb-6">
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-[#fafbfc]">
+                  <div>
+                    <h2 className="text-lg font-extrabold text-gray-900">Inquiries</h2>
+                    <p className="text-sm text-gray-500 font-medium">Messages from the public contact form.</p>
+                  </div>
+                  <button onClick={fetchInquiries} disabled={loadingInquiries}
+                    className="flex items-center justify-center p-2 rounded-xl bg-white border border-gray-200 text-gray-500 hover:text-[#2a7d5f] hover:border-[#2a7d5f] transition-all disabled:opacity-50">
+                    <RefreshCw size={16} className={loadingInquiries ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+
+                <div className="divide-y divide-gray-100 min-h-[300px]">
+                  {loadingInquiries ? (
+                     <div className="flex flex-col items-center justify-center h-[300px] text-gray-400">
+                       <RefreshCw size={24} className="animate-spin mb-3 text-[#2a7d5f]" />
+                       <p className="text-sm font-medium">Fetching secure records...</p>
+                     </div>
+                  ) : inquiriesError ? (
+                     <div className="flex flex-col items-center justify-center h-[300px] text-red-500">
+                       <XCircle size={32} className="mb-3" />
+                       <p className="text-sm font-bold">{inquiriesError}</p>
+                     </div>
+                  ) : inquiries.length === 0 ? (
+                     <div className="flex flex-col items-center justify-center h-[300px] text-gray-400">
+                       <Mail size={32} className="mb-3 text-gray-300" />
+                       <p className="text-sm font-bold text-gray-500">No inquiries found.</p>
+                     </div>
+                  ) : inquiries.map((inq: any, i: number) => (
+                    <div key={inq.id || i} className="group p-6 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h3 className="text-base font-bold text-gray-900">{inq.name}</h3>
+                          <div className="flex items-center gap-3 mt-1 text-sm text-gray-500">
+                             <a href={`mailto:${inq.email}`} className="text-[#2a7d5f] font-semibold hover:underline">{inq.email}</a>
+                             {inq.organization && (
+                               <>
+                                 <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                                 <span>{inq.organization}</span>
+                               </>
+                             )}
+                          </div>
+                        </div>
+                        <span className="text-xs font-bold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-md">
+                          {new Date(inq.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap">{inq.message}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
